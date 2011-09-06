@@ -55,6 +55,9 @@ init([Opts]) ->
 			ets:new(mod_log_chat_mysql5, [named_table, protected, set, {keypos, 1}]),
 			ets:insert(mod_log_chat_mysql5, {dbref, DBRef}),
 
+			%% issue#1: Messages garbled otherwise
+			mysql_conn:fetch(DBRef, ["set names 'utf8';"], self()),
+
 	        Result = create_table(State),
 			?INFO_MSG("create table: ~p", [Result]),
 	        erlang:monitor(process, DBRef),
