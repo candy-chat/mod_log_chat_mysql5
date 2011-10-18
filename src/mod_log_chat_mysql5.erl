@@ -80,7 +80,11 @@ init([_Host, Opts]) ->
 	Password = gen_mod:get_opt(password, Opts, ""),
 
 	?INFO_MSG("Opening mysql connection ~s@~s:~p/~s", [User, Server, Port, DB]),
-	mysql:start_link(mod_log_chat_mysql5_db, Server, Port, User, Password, DB, LogFun).
+	mysql:start_link(mod_log_chat_mysql5_db, Server, Port, User, Password, DB, LogFun),
+
+	%% issue#1: Messages garbled otherwise
+	mysql:fetch(mod_log_chat_mysql5_db, ["set names 'utf8';"]),
+	{ok, undefined}.
 
 %%--------------------------------------------------------------------
 %% Function: terminate(Reason, State) -> void()
