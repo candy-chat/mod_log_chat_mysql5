@@ -159,7 +159,6 @@ write_packet(From, To, Packet, Type) ->
 				ToJid = To#jid.luser++"@"++To#jid.lserver
 		end,
 		Proc = gen_mod:get_module_proc(From#jid.server, ?PROCNAME),
-		?INFO_MSG("Proc: ~p", [Proc]),
 		gen_server:cast(Proc, {insert_row, FromJid, ToJid, Body, Type})
     end.
 
