@@ -62,28 +62,18 @@ init([_Host, Opts]) ->
     ?INFO_MSG("Starting ~p", [?MODULE]),
 
 	crypto:start(),
-
-	LogFun = fun(debug, _Format, _Argument) ->
-	                %?DEBUG(Format, Argument);
-	                 ok;
-	               (error, Format, Argument) ->
-	                 ?INFO_MSG(Format, Argument);
-	               (Level, Format, Argument) ->
-	                 ?INFO_MSG("MySQL (~p)~n", [Level]),
-	                 ?INFO_MSG(Format, Argument)
-	            end,
+	application:start(emysql),
 
 	Server = gen_mod:get_opt(server, Opts, "localhost"),
 	Port = gen_mod:get_opt(port, Opts, 3306),
 	DB = gen_mod:get_opt(db, Opts, "logdb"),
 	User = gen_mod:get_opt(user, Opts, "root"),
 	Password = gen_mod:get_opt(password, Opts, ""),
+	PoolSize = gen_mod:get_opt(pool_size, Opts, 1),
+	Encoding = gen_mod:get_opt(encoding, Opts, utf8),
 
 	?INFO_MSG("Opening mysql connection ~s@~s:~p/~s", [User, Server, Port, DB]),
-	mysql:start_link(mod_log_chat_mysql5_db, Server, Port, User, Password, DB, LogFun),
-
-	%% issue#1: Messages garbled otherwise
-	mysql:fetch(mod_log_chat_mysql5_db, ["set names 'utf8';"]),
+	emysql:add_pool(mod_log_chat_mysql5_db, PoolSize, User, Password, Server, Port, DB, Encoding),
 	{ok, undefined}.
 
 %%--------------------------------------------------------------------
@@ -124,13 +114,9 @@ handle_call(stop, _From, State) ->
 handle_cast({insert_row, FromJid, ToJid, Body, Type}, State) ->
 	?INFO_MSG("inserting row: %p, %p, %s, %s", [FromJid, ToJid, Body, Type]),
 	Query = ["INSERT INTO ", table_name(), " (fromJid, toJid, sentDate, body, type) VALUES",
-	 		"(\"",
-	FromJid,
-	"\", \"",
-	ToJid, "\", NOW(), \"",
-	Body, "\", \"", Type ,"\");"],
+	 		"(?, ?, NOW(), ?, ?)"],
 
-	sql_query(Query),
+	sql_query(Query, [FromJid, ToJid, Body, Type]),
 	{noreply, State}.
 
 %% handle module infos
@@ -192,24 +178,15 @@ escape(html, [$& | Text]) ->
 escape(html, [Char | Text]) ->
     [Char | escape(html, Text)].
 
-sql_query(Query) ->
-    case sql_query_internal_silent(Query) of
+sql_query(Query, Params) ->
+    case sql_query_internal_silent(Query, Params) of
          {error, Reason} ->
            ?INFO_MSG("~p while ~p", [Reason, lists:append(Query)]),
             {error, Reason};
          Rez -> Rez
     end.
 
-sql_query_internal_silent(Query) ->
+sql_query_internal_silent(Query, Params) ->
     ?INFO_MSG("DOING: \"~s\"", [lists:append(Query)]),
-    get_result(mysql:fetch(mod_log_chat_mysql5_db, Query)).
-
-get_result({updated, MySQLRes}) ->
-    {updated, mysql:get_result_affected_rows(MySQLRes)};
-get_result({data, MySQLRes}) ->
-    {data, mysql:get_result_rows(MySQLRes)};
-get_result({error, "query timed out"}) ->
-    {error, "query timed out"};
-get_result({error, MySQLRes}) ->
-    Reason = mysql:get_result_reason(MySQLRes),
-    {error, Reason}.
+	emysql:prepare(mod_log_chat_mysql5_stmt, Query),
+    emysql:execute(mod_log_chat_mysql5_db, mod_log_chat_mysql5_stmt, Params).

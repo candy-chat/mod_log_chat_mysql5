@@ -5,6 +5,10 @@ Developed by Jérôme Sautret <jerome.sautret@process-one.net>, Adapted for DB L
 
 Installation
 ============
+  * Download Emysql: https://github.com/Eonblast/Emysql
+  * cd Emysql && make
+  * Copy ebin/* to your ejabberd-modules (ebin) folder
+  *
   * Copy the whole directory to your ejabberd-modules directory
   * call ./build.sh
   * copy ebin/mod_log_chat_mysql5.beam to your modules folder (e.g. /usr/lib/ejabberd/ebin on Debian)
