@@ -14,6 +14,7 @@ Installation
   * copy ebin/mod_log_chat_mysql5.beam to your modules folder (e.g. /usr/lib/ejabberd/ebin on Debian)
   * create required mysql table like this
 
+```sql
     CREATE TABLE mod_log_chat_mysql5 (
        id INT AUTO_INCREMENT PRIMARY KEY,
        fromJid VARCHAR(255) NOT NULL, 
@@ -22,5 +23,5 @@ Installation
        body TEXT, 
        type VARCHAR(10)
     ) ENGINE=MyISAM CHARACTER SET utf8;
-
+```
   * See conf/ejabberd.conf.sample for an example configuration
