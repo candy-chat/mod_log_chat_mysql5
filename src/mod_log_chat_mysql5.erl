@@ -13,12 +13,12 @@
 
 %% gen_mod callbacks
 -export([start/2, start_link/2,
-	stop/1,
-	log_packet_send/3]).
+		stop/1,
+		log_packet_send/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3]).
+		terminate/2, code_change/3]).
 
 %%-define(ejabberd_debug, true).
 
@@ -41,25 +41,25 @@ start(Host, Opts) ->
 	Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
 
 	ChildSpec =
-		{Proc,
-			{?MODULE, start_link, [Host, Opts]},
-			permanent,
-			1000,
-			worker,
-			[?MODULE]},
+			{Proc,
+				{?MODULE, start_link, [Host, Opts]},
+				permanent,
+				50,
+				worker,
+				[?MODULE]},
 	supervisor:start_child(ejabberd_sup, ChildSpec).
 
 %% stop module (remove hooks) & stop gen server
 stop(Host) ->
-    ejabberd_hooks:delete(user_send_packet, Host,
-			  ?MODULE, log_packet_send, 55),
+	ejabberd_hooks:delete(user_send_packet, Host,
+		?MODULE, log_packet_send, 55),
 	Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-	gen_server:call(Proc, stop),
+	gen_server:cast(Proc, stop),
 	supervisor:delete_child(ejabberd_sup, Proc).
 
 %% called from start_link/2 and sets up the db connection
 init([_Host, Opts]) ->
-    ?INFO_MSG("Starting ~p", [?MODULE]),
+	?INFO_MSG("Starting ~p", [?MODULE]),
 
 	crypto:start(),
 	application:start(emysql),
@@ -84,14 +84,17 @@ init([_Host, Opts]) ->
 %% The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
-    ok.
+	?INFO_MSG("Terminate called", []),
+	emysql:remove_pool(mod_log_chat_mysql5_db),
+	emysql:stop(),
+	ok.
 
 %%--------------------------------------------------------------------
 %% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
 %% Description: Convert process state when code is changed
 %%--------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
+	{ok, State}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -103,7 +106,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
 handle_call(stop, _From, State) ->
-    {stop, normal, ok, State}.
+	{stop, normal, State}.
 
 %%--------------------------------------------------------------------
 %% Function: handle_cast(Msg, State) -> {noreply, State} |
@@ -112,80 +115,78 @@ handle_call(stop, _From, State) ->
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
 handle_cast({insert_row, FromJid, ToJid, Body, Type}, State) ->
-	?INFO_MSG("inserting row: %p, %p, %s, %s", [FromJid, ToJid, Body, Type]),
 	Query = ["INSERT INTO ", table_name(), " (fromJid, toJid, sentDate, body, type) VALUES",
-	 		"(?, ?, NOW(), ?, ?)"],
+		"(?, ?, NOW(), ?, ?)"],
 
 	sql_query(Query, [FromJid, ToJid, Body, Type]),
 	{noreply, State}.
 
 %% handle module infos
 handle_info({'DOWN', _MonitorRef, process, _Pid, _Info}, State) ->
-    {stop, connection_dropped, State};
+	{stop, connection_dropped, State};
 handle_info(Info, State) ->
-    ?INFO_MSG("Got Info:~p, State:~p", [Info, State]),
-    {noreply, State}.
+	?INFO_MSG("Got Info:~p, State:~p", [Info, State]),
+	{noreply, State}.
 
 %% ejabberd hook
 log_packet_send(From, To, Packet) ->
-    log_packet(From, To, Packet).
+	log_packet(From, To, Packet).
 
 log_packet(From, To, Packet = {xmlelement, "message", Attrs, _Els}) ->
-    case xml:get_attr_s("type", Attrs) of
-	"error" -> %% we don't log errors
-	    ?DEBUG("dropping error: ~s", [xml:element_to_string(Packet)]),
-	    ok;
-	_ ->
-	    write_packet(From, To, Packet, xml:get_attr_s("type", Attrs))
-    end;
+	case xml:get_attr_s("type", Attrs) of
+		"error" -> %% we don't log errors
+			?DEBUG("dropping error: ~s", [xml:element_to_string(Packet)]),
+			ok;
+		_ ->
+			write_packet(From, To, Packet, xml:get_attr_s("type", Attrs))
+	end;
 log_packet(_From, _To, _Packet) ->
-    ok.
+	ok.
 
 %% parse message and send to db connection gen_server
 write_packet(From, To, Packet, Type) ->
-    Body = escape(html, xml:get_path_s(Packet, [{elem, "body"}, cdata])),
-    case Body of
-        "" -> %% don't log empty messages
-            ?DEBUG("not logging empty message from ~s",[jlib:jid_to_string(From)]),
-            ok;
-        _ ->
-	    FromJid = From#jid.luser++"@"++From#jid.lserver++"/"++From#jid.resource,
-		ResourceLen = length(To#jid.resource),
-		%% don't include resource when target is muc room
-		if
-			ResourceLen > 0 ->
-				ToJid = To#jid.luser++"@"++To#jid.lserver++"/"++To#jid.resource;
-			true ->
-				ToJid = To#jid.luser++"@"++To#jid.lserver
-		end,
-		Proc = gen_mod:get_module_proc(From#jid.server, ?PROCNAME),
-		gen_server:cast(Proc, {insert_row, FromJid, ToJid, Body, Type})
-    end.
+	Body = escape(html, xml:get_path_s(Packet, [{elem, "body"}, cdata])),
+	case Body of
+		"" -> %% don't log empty messages
+			?DEBUG("not logging empty message from ~s",[jlib:jid_to_string(From)]),
+			ok;
+		_ ->
+			FromJid = From#jid.luser++"@"++From#jid.lserver++"/"++From#jid.resource,
+			ResourceLen = length(To#jid.resource),
+			%% don't include resource when target is muc room
+			if
+				ResourceLen > 0 ->
+					ToJid = To#jid.luser++"@"++To#jid.lserver++"/"++To#jid.resource;
+				true ->
+					ToJid = To#jid.luser++"@"++To#jid.lserver
+			end,
+			Proc = gen_mod:get_module_proc(From#jid.server, ?PROCNAME),
+			gen_server:cast(Proc, {insert_row, FromJid, ToJid, Body, Type})
+	end.
 
 %% ==================
 %% SQL Query API
 %% ==================
 
 escape(text, Text) ->
-    Text;
+	Text;
 escape(_, "") ->
-    "";
+	"";
 escape(html, [$< | Text]) ->
-    "&lt;" ++ escape(html, Text);
+	"&lt;" ++ escape(html, Text);
 escape(html, [$& | Text]) ->
-    "&amp;" ++ escape(html, Text);
+	"&amp;" ++ escape(html, Text);
 escape(html, [Char | Text]) ->
-    [Char | escape(html, Text)].
+	[Char | escape(html, Text)].
 
 sql_query(Query, Params) ->
-    case sql_query_internal_silent(Query, Params) of
-         {error, Reason} ->
-           ?INFO_MSG("~p while ~p", [Reason, lists:append(Query)]),
-            {error, Reason};
-         Rez -> Rez
-    end.
+	case sql_query_internal_silent(Query, Params) of
+		{error, Reason} ->
+			?INFO_MSG("~p while ~p", [Reason, lists:append(Query)]),
+			{error, Reason};
+		Rez -> Rez
+	end.
 
 sql_query_internal_silent(Query, Params) ->
-    ?INFO_MSG("DOING: \"~s\"", [lists:append(Query)]),
 	emysql:prepare(mod_log_chat_mysql5_stmt, Query),
-    emysql:execute(mod_log_chat_mysql5_db, mod_log_chat_mysql5_stmt, Params).
+	emysql:execute(mod_log_chat_mysql5_db, mod_log_chat_mysql5_stmt, Params).
