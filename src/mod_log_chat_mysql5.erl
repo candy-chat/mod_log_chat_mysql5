@@ -54,7 +54,7 @@ stop(Host) ->
 	ejabberd_hooks:delete(user_send_packet, Host,
 		?MODULE, log_packet_send, 55),
 	Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
-	gen_server:cast(Proc, stop),
+	gen_server:call(Proc, stop),
 	supervisor:delete_child(ejabberd_sup, Proc).
 
 %% called from start_link/2 and sets up the db connection
