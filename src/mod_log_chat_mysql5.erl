@@ -114,12 +114,12 @@ handle_call(stop, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
-handle_cast({insert_row, FromJid, ToJid, Body, Type}, State) ->
-	Query = ["INSERT INTO ", table_name(), " (fromJid, toJid, sentDate, body, type) VALUES",
-		"(?, ?, NOW(), ?, ?)"],
+handle_cast({insert_row, FromJid, ToJid, Body, Lat, Long, Type}, State) ->
+        Query = ["INSERT INTO ", table_name(), " (fromJid, toJid, sentDate, body, latitude, longitude, type) VALUES",
+                "(?, ?, NOW(), ?, ?, ?, ?)"],
 
-	sql_query(Query, [FromJid, ToJid, Body, Type]),
-	{noreply, State}.
+        sql_query(Query, [FromJid, ToJid, Body, Lat, Long, Type]),
+        {noreply, State}.
 
 %% handle module infos
 handle_info({'DOWN', _MonitorRef, process, _Pid, _Info}, State) ->
@@ -138,13 +138,13 @@ log_packet(From, To, Packet = {xmlelement, "message", Attrs, _Els}) ->
 			?DEBUG("dropping error: ~s", [xml:element_to_string(Packet)]),
 			ok;
 		_ ->
-			write_packet(From, To, Packet, xml:get_attr_s("type", Attrs))
+                        write_packet(From, To, Packet, xml:get_attr_s("lat", Attrs), xml:get_attr_s("long", Attrs), xml:get_attr_s("type", Attrs))
 	end;
 log_packet(_From, _To, _Packet) ->
 	ok.
 
 %% parse message and send to db connection gen_server
-write_packet(From, To, Packet, Type) ->
+write_packet(From, To, Packet, Lat, Long, Type) ->
 	Body = escape(html, xml:get_path_s(Packet, [{elem, "body"}, cdata])),
 	case Body of
 		"" -> %% don't log empty messages
@@ -161,7 +161,7 @@ write_packet(From, To, Packet, Type) ->
 					ToJid = To#jid.luser++"@"++To#jid.lserver
 			end,
 			Proc = gen_mod:get_module_proc(From#jid.server, ?PROCNAME),
-			gen_server:cast(Proc, {insert_row, FromJid, ToJid, Body, Type})
+                        gen_server:cast(Proc, {insert_row, FromJid, ToJid, Body, Lat, Long, Type})
 	end.
 
 %% ==================
