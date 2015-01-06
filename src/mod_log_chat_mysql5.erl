@@ -21,8 +21,9 @@
 		terminate/2, code_change/3]).
 
 %%-define(ejabberd_debug, true).
-
+%-define(LAGER, true).
 -include("ejabberd.hrl").
+-include("logger.hrl").
 -include("jlib.hrl").
 
 -define(PROCNAME, ?MODULE).
@@ -51,6 +52,7 @@ start(Host, Opts) ->
 
 %% stop module (remove hooks) & stop gen server
 stop(Host) ->
+	emysql:remove_pool(mod_log_chat_mysql5_db),
 	ejabberd_hooks:delete(user_send_packet, Host,
 		?MODULE, log_packet_send, 55),
 	Proc = gen_mod:get_module_proc(Host, ?PROCNAME),
@@ -59,20 +61,20 @@ stop(Host) ->
 
 %% called from start_link/2 and sets up the db connection
 init([_Host, Opts]) ->
-	?INFO_MSG("Starting ~p", [?MODULE]),
+	%?INFO_MSG("Starting ~p", [?MODULE]),
 
 	crypto:start(),
 	application:start(emysql),
 
-	Server = gen_mod:get_opt(server, Opts, "localhost"),
-	Port = gen_mod:get_opt(port, Opts, 3306),
-	DB = gen_mod:get_opt(db, Opts, "logdb"),
-	User = gen_mod:get_opt(user, Opts, "root"),
-	Password = gen_mod:get_opt(password, Opts, ""),
-	PoolSize = gen_mod:get_opt(pool_size, Opts, 1),
-	Encoding = gen_mod:get_opt(encoding, Opts, utf8),
+	Server = gen_mod:get_opt(server, Opts, fun(Val) -> binary_to_list(Val) end, "localhost"),
+	Port = gen_mod:get_opt(port, Opts, fun(Val) -> Val end, 3306),
+	DB = gen_mod:get_opt(db, Opts, fun(Val) -> binary_to_list(Val) end, "logdb"),
+	User = gen_mod:get_opt(user, Opts, fun(Val) -> binary_to_list(Val) end, "root"),
+	Password = gen_mod:get_opt(password, Opts, fun(Val) -> binary_to_list(Val) end, ""),
+	PoolSize = gen_mod:get_opt(pool_size, Opts, fun(Val) -> Val end, 1),
+	Encoding = gen_mod:get_opt(encoding, Opts, fun(Val) -> Val end, utf8),
 
-	?INFO_MSG("Opening mysql connection ~s@~s:~p/~s", [User, Server, Port, DB]),
+	%?INFO_MSG("Opening mysql connection ~s@~s:~p/~s ~p ~p ~p", [User, Server, Port, DB, Password, PoolSize, Encoding]),
 	emysql:add_pool(mod_log_chat_mysql5_db, PoolSize, User, Password, Server, Port, DB, Encoding),
 	{ok, undefined}.
 
@@ -84,7 +86,7 @@ init([_Host, Opts]) ->
 %% The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
-	?INFO_MSG("Terminate called", []),
+	%?INFO_MSG("Terminate called", []),
 	emysql:remove_pool(mod_log_chat_mysql5_db),
 	emysql:stop(),
 	ok.
@@ -125,7 +127,7 @@ handle_cast({insert_row, FromJid, ToJid, Body, Type}, State) ->
 handle_info({'DOWN', _MonitorRef, process, _Pid, _Info}, State) ->
 	{stop, connection_dropped, State};
 handle_info(Info, State) ->
-	?INFO_MSG("Got Info:~p, State:~p", [Info, State]),
+	%?INFO_MSG("Got Info:~p, State:~p", [Info, State]),
 	{noreply, State}.
 
 %% ejabberd hook
@@ -135,7 +137,7 @@ log_packet_send(From, To, Packet) ->
 log_packet(From, To, Packet = {xmlelement, "message", Attrs, _Els}) ->
 	case xml:get_attr_s("type", Attrs) of
 		"error" -> %% we don't log errors
-			?DEBUG("dropping error: ~s", [xml:element_to_string(Packet)]),
+			%?DEBUG("dropping error: ~s", [xml:element_to_string(Packet)]),
 			ok;
 		_ ->
 			write_packet(From, To, Packet, xml:get_attr_s("type", Attrs))
@@ -148,7 +150,7 @@ write_packet(From, To, Packet, Type) ->
 	Body = escape(html, xml:get_path_s(Packet, [{elem, "body"}, cdata])),
 	case Body of
 		"" -> %% don't log empty messages
-			?DEBUG("not logging empty message from ~s",[jlib:jid_to_string(From)]),
+			%?DEBUG("not logging empty message from ~s",[jlib:jid_to_string(From)]),
 			ok;
 		_ ->
 			FromJid = From#jid.luser++"@"++From#jid.lserver++"/"++From#jid.resource,
@@ -182,7 +184,7 @@ escape(html, [Char | Text]) ->
 sql_query(Query, Params) ->
 	case sql_query_internal_silent(Query, Params) of
 		{error, Reason} ->
-			?INFO_MSG("~p while ~p", [Reason, lists:append(Query)]),
+			%?INFO_MSG("~p while ~p", [Reason, lists:append(Query)]),
 			{error, Reason};
 		Rez -> Rez
 	end.
