@@ -134,7 +134,7 @@ handle_info(Info, State) ->
 log_packet_send(From, To, Packet) ->
 	log_packet(From, To, Packet).
 
-log_packet(From, To, Packet = {xmlelement, "message", Attrs, _Els}) ->
+log_packet(From, To, Packet = {xmlel, <<"message">>, Attrs, _Els}) ->
 	case xml:get_attr_s("type", Attrs) of
 		"error" -> %% we don't log errors
 			%?DEBUG("dropping error: ~s", [xml:element_to_string(Packet)]),
@@ -147,20 +147,20 @@ log_packet(_From, _To, _Packet) ->
 
 %% parse message and send to db connection gen_server
 write_packet(From, To, Packet, Type) ->
-	Body = escape(html, xml:get_path_s(Packet, [{elem, "body"}, cdata])),
+	Body = escape(html,binary_to_list(xml:get_path_s(Packet, [{elem, <<"body">>}, cdata]))),
 	case Body of
 		"" -> %% don't log empty messages
 			%?DEBUG("not logging empty message from ~s",[jlib:jid_to_string(From)]),
 			ok;
 		_ ->
-			FromJid = From#jid.luser++"@"++From#jid.lserver++"/"++From#jid.resource,
-			ResourceLen = length(To#jid.resource),
+			FromJid = lists:concat([binary_to_list(From#jid.luser),"@",binary_to_list(From#jid.lserver),"/",binary_to_list(From#jid.resource)]),
+			ResourceLen = length(binary_to_list(To#jid.resource)),
 			%% don't include resource when target is muc room
 			if
 				ResourceLen > 0 ->
-					ToJid = To#jid.luser++"@"++To#jid.lserver++"/"++To#jid.resource;
+					ToJid = lists:concat([binary_to_list(To#jid.luser),"@",binary_to_list(To#jid.lserver),"/",binary_to_list(To#jid.resource)]);
 				true ->
-					ToJid = To#jid.luser++"@"++To#jid.lserver
+					ToJid = lists:concat([binary_to_list(To#jid.luser),"@",binary_to_list(To#jid.lserver)])
 			end,
 			Proc = gen_mod:get_module_proc(From#jid.server, ?PROCNAME),
 			gen_server:cast(Proc, {insert_row, FromJid, ToJid, Body, Type})
