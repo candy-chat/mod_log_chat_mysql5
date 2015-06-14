@@ -153,18 +153,25 @@ write_packet(From, To, Packet, Type) ->
 			%?DEBUG("not logging empty message from ~s",[jlib:jid_to_string(From)]),
 			ok;
 		_ ->
-			FromJid = lists:concat([binary_to_list(From#jid.luser),"@",binary_to_list(From#jid.lserver),"/",binary_to_list(From#jid.resource)]),
-			ResourceLen = length(binary_to_list(To#jid.resource)),
+			FromLUser = From#jid.luser,
+            		FromLServer = From#jid.lserver,
+            		FromResource = From#jid.resource,
+			FromJid = <<FromLUser/binary, "@", FromLServer/binary, "/", FromResource/binary>>,
+
+			ToLUser = To#jid.luser,
+            		ToLServer = To#jid.lserver,
+            		ToResource = To#jid.resource,
 			%% don't include resource when target is muc room
 			if
-				ResourceLen > 0 ->
-					ToJid = lists:concat([binary_to_list(To#jid.luser),"@",binary_to_list(To#jid.lserver),"/",binary_to_list(To#jid.resource)]);
+				length(ToResource) > 0 ->
+					ToJid = <<ToLUser/binary,"@",ToLServer/binary,"/",ToResource/binary>>;
 				true ->
-					ToJid = lists:concat([binary_to_list(To#jid.luser),"@",binary_to_list(To#jid.lserver)])
+					ToJid = <<ToLUser/binary,"@",ToLServer/binary>>
 			end,
 			Proc = gen_mod:get_module_proc(From#jid.server, ?PROCNAME),
 			gen_server:cast(Proc, {insert_row, FromJid, ToJid, Body, Type})
 	end.
+
 
 %% ==================
 %% SQL Query API
